@@ -14,10 +14,10 @@ type NormalizeMosAttributes<T> = {
 		NormalizeMosAttributes<T[P]>
 }
 
-
-export const runningOrder: NormalizeMosAttributes<IMOSRunningOrder> = {
+// export const runningOrder: NormalizeMosAttributes<IMOSRunningOrder> = {
+export const runningOrder: any = {
 	ID: 'filename',
-	Slug: 'Evening show',
+	Slug: 'Evening show1',
 	// DefaultChannel?: ''
 	// EditorialStart?: MosTime;
 	// EditorialDuration?: MosDuration;
@@ -39,14 +39,16 @@ export const runningOrder: NormalizeMosAttributes<IMOSRunningOrder> = {
 		{ Slug: 'TITLE A;STORY_C', ID: 'STORY_C', Items: [] },
 		{ Slug: 'TITLE A;STORY_D', ID: 'STORY_D', Items: [] },
 		{ Slug: 'TITLE B;STORY_E', ID: 'STORY_E', Items: [] },
-		{ Slug: 'TITLE B;STORY_J', ID: 'STORY_J', Items: [] },
-		{ Slug: 'TITLE C;STORY_K', ID: 'STORY_K', Items: [] },
+		{ Slug: 'TITLE D;STORY_F', ID: 'STORY_F', Items: [] },
 		{ Slug: 'TITLE D;STORY_G', ID: 'STORY_G', Items: [] },
 		{ Slug: 'TITLE D;STORY_H', ID: 'STORY_H', Items: [] },
 		{ Slug: 'TITLE E;STORY_I', ID: 'STORY_I', Items: [] },
+		{ Slug: 'TITLE B;STORY_J', ID: 'STORY_J', Items: [] },
+		{ Slug: 'TITLE C;STORY_K', ID: 'STORY_K', Items: [] },
 	]
 }
-export const fullStories: NormalizeMosAttributes<IMOSROFullStory>[] = [
+// export const fullStories: NormalizeMosAttributes<IMOSROFullStory>[] = [
+export const fullStories: any[] = [
 	{
 		ID: 'STORY_A',
 		Slug: 'TITLE A;STORY_A',

@@ -28,6 +28,8 @@ import {
 	IMOSListMachInfo,
 	MosTime
 } from 'mos-connection'
+import { diffLists, ListEntry, OperationType } from './mosDiff'
+import * as crypto from 'crypto'
 
 console.log('Starting Quick-MOS')
 
@@ -212,9 +214,13 @@ function refreshFiles () {
 
 		const id = runningOrder.ID.toString()
 		runningOrderIds[id] = t
-		_.each(monitors, (monitor) => {
-			monitor.onUpdatedRunningOrder(runningOrder, stories)
-		})
+		if (_.isEmpty(monitors)) {
+			fakeOnUpdatedRunningOrder(runningOrder, stories)
+		} else {
+			_.each(monitors, (monitor) => {
+				monitor.onUpdatedRunningOrder(runningOrder, stories)
+			})
+		}
 	})
 	_.each(runningOrderIds, (oldT, id) => {
 		if (oldT !== t) {
@@ -237,7 +243,7 @@ function fetchRunningOrders () {
 		if (filePath.match(/\.ts$/)) {
 
 			const fileContents = loadFile(requirePath)
-			const ro: IMOSRunningOrder = fileContents.runningOrder
+			const ro: IMOSRunningOrder = fileContents.runningOrder as any
 			ro.ID = new MosString128(
 				filePath.replace(/[\W]/g, '_')
 			)
@@ -276,7 +282,12 @@ type MOSCommand = () => Promise<any>
 class MOSMonitor {
 	private commands: MOSCommand[] = []
 
-	private ros: {[ roId: string]: IMOSRunningOrder} = {}
+	private ros: {
+		[ roId: string]: {
+			ro: IMOSRunningOrder,
+			storyList: ListEntry<IMOSROStory>[]
+		}
+	} = {}
 	private queueRunning: boolean = false
 
 	constructor (
@@ -300,6 +311,7 @@ class MOSMonitor {
 		console.log('onUpdatedRunningOrder', roId)
 
 		const localRo = this.ros[roId]
+		const newStoryList = MOSMonitor.prepareStories(ro.Stories)
 
 		if (!localRo) {
 			// New RO
@@ -317,11 +329,11 @@ class MOSMonitor {
 			})
 		} else {
 			const metadataEqual = _.isEqual(
-				localRo.MosExternalMetaData,
+				localRo.ro.MosExternalMetaData,
 				ro.MosExternalMetaData
 			)
 			const roStoriesEqual = _.isEqual(
-				localRo.Stories,
+				localRo.ro.Stories,
 				ro.Stories
 			)
 			const roBaseDataEqual = _.isEqual(
@@ -352,31 +364,51 @@ class MOSMonitor {
 				!roStoriesEqual
 			) {
 				// Only Stories has changed
-				const o = this.storiesChanges(localRo.Stories, ro.Stories)
+				const operations = diffLists(localRo.storyList, newStoryList)
 
-				console.log('added', o.added)
-				console.log('changed', o.changed)
-				console.log('moved', o.moved)
-				console.log('removed', o.removed)
-
-				if (o.removed.length) {
-					console.log('sendRODeleteStories', ro.ID, o.removed.map(r => r.id))
-					this.commands.push(() => {
-						return this.mosDevice.sendRODeleteStories({
-							RunningOrderID: ro.ID
-						}, o.removed.map(r => new MosString128(r.id)))
-					})
+				for (const operation of operations) {
+					if (operation.type === OperationType.INSERT) {
+						const inserts = operation.inserts.map(i => i.content)
+						this.commands.push(() => {
+							console.log('sendROInsertStories', ro.ID)
+							return this.mosDevice.sendROInsertStories({
+								RunningOrderID: ro.ID,
+								StoryID: new MosString128(operation.beforeId)
+							}, inserts)
+						})
+					} else if (operation.type === OperationType.UPDATE) {
+						const updatedStory = operation.content
+						this.commands.push(() => {
+							console.log('sendROInsertStories', ro.ID)
+							return this.mosDevice.sendROReplaceStories({
+								RunningOrderID: ro.ID,
+								StoryID: new MosString128(operation.id)
+							}, [ updatedStory ])
+						})
+					} else if (operation.type === OperationType.REMOVE) {
+						const removeIds = operation.ids
+						console.log('sendRODeleteStories', ro.ID, removeIds)
+						this.commands.push(() => {
+							return this.mosDevice.sendRODeleteStories({
+								RunningOrderID: ro.ID
+							}, removeIds.map(id => new MosString128(id)))
+						})
+					} else if (operation.type === OperationType.MOVE) {
+						const beforeId = operation.beforeId
+						const moveIds = operation.ids
+						console.log('sendROMoveStories', ro.ID, moveIds, beforeId)
+						this.commands.push(() => {
+							return this.mosDevice.sendROMoveStories({
+								RunningOrderID: ro.ID,
+								StoryID: new MosString128(beforeId)
+							}, moveIds.map(id => new MosString128(id)))
+						})
+					}
 				}
+				/*
 				// const addedGroups = this.groupIndexes(o.added)
 				_.each(o.added, (stories, beforeId) => {
 					// const index = parseInt(index0, 10)
-					this.commands.push(() => {
-						console.log('sendROInsertStories', ro.ID)
-						return this.mosDevice.sendROInsertStories({
-							RunningOrderID: ro.ID,
-							StoryID: new MosString128(beforeId)
-						}, stories)
-					})
 				})
 				_.each(o.changed, c => {
 					this.commands.push(() => {
@@ -422,12 +454,7 @@ class MOSMonitor {
 						}, m.ids.map(m => new MosString128(m)))
 					})
 				})
-
-				//
-				// this.commands.push(() => {
-				// 	console.log('sendMetadataReplace')
-				// 	return this.mosDevice.sendMetadataReplace(ro)
-				// })
+				*/
 			} else {
 				// last resort: replace the whole rundown
 				this.commands.push(() => {
@@ -437,7 +464,10 @@ class MOSMonitor {
 			}
 		}
 		// At the end, store the updated RO:
-		this.ros[roId] = ro
+		this.ros[roId] = {
+			ro: ro,
+			storyList: newStoryList
+		}
 
 		this.triggerCheckQueue()
 	}
@@ -452,110 +482,17 @@ class MOSMonitor {
 			return groupIndex
 		})
 	}
-	storiesChanges (stories0: IMOSROStory[], stories1: IMOSROStory[]) {
-		const added: {[afterId: string]: IMOSROStory[]} = {}
-		const changed: {id: string, story: IMOSROStory}[] = []
-		const moved: {afterId: string, ids: string[]}[] = []
-		const removed: {id: string}[] = []
-
-		const oldStories: {[id: string]: {story: IMOSROStory, index: number}} = {}
-		const newStories: {[id: string]: {story: IMOSROStory, index: number}} = {}
-
-		const oldPrevNext: {[id: string]: { prev: string, next: string, index: number}} = {}
-		const newPrevNext: {[id: string]: { prev: string, next: string, index: number}} = {}
-
-		_.each(stories0, (story, index) => {
-			const id = story.ID.toString()
-			oldStories[id] = { story, index }
-
-			oldPrevNext[id] = {
-				prev: index > 0 ? stories0[index - 1].ID.toString() : '',
-				next: (stories0[index + 1] || { ID: '' }).ID.toString(),
-				index
+	static prepareStories (stories: IMOSROStory[]): ListEntry<IMOSROStory>[] {
+		return stories.map(story => {
+			return {
+				id: story.ID.toString(),
+				changedHash: this.md5(JSON.stringify(story)),
+				content: story
 			}
 		})
-
-		_.each(stories1, (story, index) => {
-			const id = story.ID.toString()
-			newStories[story.ID.toString()] = { story, index }
-
-			newPrevNext[id] = {
-				prev: index > 0 ? stories1[index - 1].ID.toString() : '',
-				next: (stories1[index + 1] || { ID: '' }).ID.toString(),
-				index
-			}
-
-			// const oldStory = oldStories[id]
-			// if (!oldStory) {
-
-			// } else {
-				// if (!_.isEqual(oldStory.story, story)) {
-					// changed.push({ id, story })
-				// }
-				// if (oldStory.index !== index) {
-					// moved.push({ id, index, oldIndex: oldStory.index })
-				// }
-			// }
-		})
-		const movedIds: {[id: string]: true} = {}
-		_.each(stories1, (story) => {
-			const id = story.ID.toString()
-			const n = newPrevNext[id]
-
-			const o = oldPrevNext[id]
-			const oldStory = oldStories[id]
-			if (!o) {
-				const afterId = n.next
-				if (!added[afterId]) added[afterId] = []
-				added[afterId].push(story)
-			} else {
-				if (!_.isEqual(oldStory.story, story)) {
-					changed.push({ id, story })
-				}
-
-				if (movedIds[id]) return // already moved this one
-				if (
-					o.prev !== n.prev &&
-					o.next !== n.next
-				) {
-					// If both the prev och the next reference has changed, it has been moved
-					const move = { afterId: n.next, ids: [id] }
-					moved.push(move)
-					movedIds[id] = true
-					// Also move subsequent ones:
-					let movedId = id
-					let nextId = n.next
-					for (let i = _.keys(newPrevNext).length; i > 0; i--) {
-						const n2 = newPrevNext[nextId]
-						const o2 = oldPrevNext[nextId]
-						if (!o2) return
-						if (o2.prev === movedId) {
-							move.ids.push(nextId)
-							movedIds[nextId] = true
-							movedId = nextId
-							nextId = n2.next
-						} else {
-							break
-						}
-					}
-				}
-			}
-		})
-		_.each(stories0, (story) => {
-			const id = story.ID.toString()
-			const n = newPrevNext[id]
-			if (!n) {
-				removed.push({ id })
-			}
-		})
-
-		return {
-			added,
-			changed,
-			moved,
-			removed
-		}
-
+	}
+	static md5 (str: string): string {
+		return crypto.createHash('md5').update(str).digest('hex')
 	}
 
 	private triggerCheckQueue () {
@@ -578,4 +515,127 @@ class MOSMonitor {
 			}
 		}
 	}
+}
+
+const fake: any = {
+	ros: {}
+}
+function fakeOnUpdatedRunningOrder (ro: IMOSRunningOrder, fullStories: IMOSROFullStory[]): void {
+	// compare with
+	const roId = ro.ID.toString()
+	// console.log('fakeOnUpdatedRunningOrder', roId)
+
+	const localRo = fake.ros[roId]
+	const newStoryList = MOSMonitor.prepareStories(ro.Stories)
+
+	if (!localRo) {
+		// New RO
+		console.log('sendCreateRunningOrder', ro.ID)
+
+		// console.log('stories', fullStories.length)
+		// fullStories.forEach(story => {
+		// 	console.log('a')
+		// 	this.commands.push(() => {
+		// 		console.log('sendFullStory', story.ID)
+		// 		return this.mosDevice.sendROStory(story)
+		// 	})
+		// })
+	} else {
+		const metadataEqual = _.isEqual(
+			localRo.ro.MosExternalMetaData,
+			ro.MosExternalMetaData
+		)
+		const roStoriesEqual = _.isEqual(
+			localRo.ro.Stories,
+			ro.Stories
+		)
+		const roBaseDataEqual = _.isEqual(
+			_.omit(localRo.ro,	'MosExternalMetaData', 'Stories'),
+			_.omit(ro,		'MosExternalMetaData', 'Stories')
+		)
+		// console.log(_.omit(localRo.ro,	'MosExternalMetaData', 'Stories'))
+		// console.log(_.omit(ro,		'MosExternalMetaData', 'Stories'))
+		// console.log(metadataEqual)
+		// console.log(roStoriesEqual)
+		// console.log(roBaseDataEqual)
+		if (
+			roBaseDataEqual &&
+			metadataEqual &&
+			roStoriesEqual
+		) {
+			// nothing changed, do nothing
+		} else if (
+			(
+				!roBaseDataEqual ||
+				!metadataEqual
+			) &&
+			roStoriesEqual
+		) {
+			// Only RO metadata has changed
+			console.log('sendMetadataReplace', ro.ID)
+			// this.commands.push(() => {
+			// 	return this.mosDevice.sendMetadataReplace(ro)
+			// })
+		} else if (
+			roBaseDataEqual &&
+			metadataEqual &&
+			!roStoriesEqual
+		) {
+			// Only Stories has changed
+			const operations = diffLists(localRo.storyList, newStoryList)
+
+			for (const operation of operations) {
+				if (operation.type === OperationType.INSERT) {
+					const inserts = operation.inserts.map(i => i.content)
+					console.log('sendROInsertStories', ro.ID)
+					// this.commands.push(() => {
+					// 	return this.mosDevice.sendROInsertStories({
+					// 		RunningOrderID: ro.ID,
+					// 		StoryID: new MosString128(operation.beforeId)
+					// 	}, inserts)
+					// })
+				} else if (operation.type === OperationType.UPDATE) {
+					const updatedStory = operation.content
+					console.log('sendROInsertStories', ro.ID)
+					// this.commands.push(() => {
+					// 	return this.mosDevice.sendROReplaceStories({
+					// 		RunningOrderID: ro.ID,
+					// 		StoryID: new MosString128(operation.id)
+					// 	}, [ updatedStory ])
+					// })
+				} else if (operation.type === OperationType.REMOVE) {
+					const removeIds = operation.ids
+					console.log('sendRODeleteStories', ro.ID, removeIds)
+					// this.commands.push(() => {
+					// 	return this.mosDevice.sendRODeleteStories({
+					// 		RunningOrderID: ro.ID
+					// 	}, removeIds.map(id => new MosString128(id)))
+					// })
+				} else if (operation.type === OperationType.MOVE) {
+					const beforeId = operation.beforeId
+					const moveIds = operation.ids
+					console.log('sendROMoveStories', ro.ID, moveIds, 'before ' + beforeId)
+					// this.commands.push(() => {
+					// 	return this.mosDevice.sendROMoveStories({
+					// 		RunningOrderID: ro.ID,
+					// 		StoryID: new MosString128(beforeId)
+					// 	}, moveIds.map(id => new MosString128(id)))
+					// })
+				}
+			}
+		} else {
+			// last resort: replace the whole rundown
+			console.log('sendReplaceRunningOrder')
+			// this.commands.push(() => {
+			// 	return this.mosDevice.sendReplaceRunningOrder(ro)
+			// })
+		}
+	}
+	// At the end, store the updated RO:
+	fake.ros[roId] = {
+		ro: ro,
+		storyList: newStoryList
+	}
+
+	// this.triggerCheckQueue()
 }
