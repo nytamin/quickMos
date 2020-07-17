@@ -83,8 +83,8 @@ export const fullStories: any[] = [
 							}
 						}
 					],
-					mosAbstract: 'M: NRK Sørlandet (16-06-16 16:01)',
-					ObjectSlug: 'M: NRK Sørlandet'
+					mosAbstract: 'This is the Absctract',
+					ObjectSlug: 'This is the Slug'
 				}
 			},
 			{
