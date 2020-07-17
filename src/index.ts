@@ -189,6 +189,10 @@ async function reloadInner () {
 				const ros = fetchRunningOrders()
 				return Promise.resolve(ros.map(r => r.ro))
 			})
+			mosDevice.onRequestRunningOrder((roId) => {
+				const ro = monitors[mosId].resendRunningOrder(roId as any as string)
+				return Promise.resolve(ro)
+			})
 			// mosDevice.onROStory((story: IMOSROFullStory) => Promise<IMOSROAck>): void;
 			setTimeout(() => {
 				refreshFiles()
@@ -285,7 +289,8 @@ class MOSMonitor {
 	private ros: {
 		[ roId: string]: {
 			ro: IMOSRunningOrder,
-			storyList: ListEntry<IMOSROStory>[]
+			storyList: ListEntry<IMOSROStory>[],
+			fullStories: {[id: string]: IMOSROFullStory}
 		}
 	} = {}
 	private queueRunning: boolean = false
@@ -305,39 +310,45 @@ class MOSMonitor {
 		delete this.ros[roId]
 		this.triggerCheckQueue()
 	}
+	resendRunningOrder (roId: string): IMOSRunningOrder {
+		const local = this.ros[roId]
+		if (local) {
+			setTimeout(() => {
+				Object.values(local.fullStories).forEach(story => {
+					this.commands.push(() => {
+						console.log('sendFullStory', story.ID)
+						return this.mosDevice.sendROStory(story)
+					})
+				})
+			}, 100)
+			return local.ro
+		} else throw new Error(`ro ${roId} not found`)
+	}
 	onUpdatedRunningOrder (ro: IMOSRunningOrder, fullStories: IMOSROFullStory[]): void {
 		// compare with
 		const roId = ro.ID.toString()
-		console.log('onUpdatedRunningOrder', roId)
+		console.log('onUpdatedRunningOrder ----------', roId)
 
-		const localRo = this.ros[roId]
+		const local = this.ros[roId]
 		const newStoryList = MOSMonitor.prepareStories(ro.Stories)
 
-		if (!localRo) {
+		if (!local) {
 			// New RO
 			this.commands.push(() => {
 				console.log('sendCreateRunningOrder', ro.ID)
 				return this.mosDevice.sendCreateRunningOrder(ro)
 			})
-			console.log('stories', fullStories.length)
-			fullStories.forEach(story => {
-				console.log('a')
-				this.commands.push(() => {
-					console.log('sendFullStory', story.ID)
-					return this.mosDevice.sendROStory(story)
-				})
-			})
 		} else {
 			const metadataEqual = _.isEqual(
-				localRo.ro.MosExternalMetaData,
+				local.ro.MosExternalMetaData,
 				ro.MosExternalMetaData
 			)
 			const roStoriesEqual = _.isEqual(
-				localRo.ro.Stories,
+				local.ro.Stories,
 				ro.Stories
 			)
 			const roBaseDataEqual = _.isEqual(
-				_.omit(localRo,	'MosExternalMetaData', 'Stories'),
+				_.omit(local.ro,	'MosExternalMetaData', 'Stories'),
 				_.omit(ro,		'MosExternalMetaData', 'Stories')
 			)
 			if (
@@ -364,7 +375,7 @@ class MOSMonitor {
 				!roStoriesEqual
 			) {
 				// Only Stories has changed
-				const operations = diffLists(localRo.storyList, newStoryList)
+				const operations = diffLists(local.storyList, newStoryList)
 
 				for (const operation of operations) {
 					if (operation.type === OperationType.INSERT) {
@@ -463,10 +474,34 @@ class MOSMonitor {
 				})
 			}
 		}
+
+		console.log('stories', fullStories.length)
+		const newStories: {[id: string]: IMOSROFullStory} = {}
+		fullStories.forEach(story => {
+			// @ts-ignore
+			story.RunningOrderId = roId
+
+			newStories[story.ID.toString()] = story
+
+			const localStory = local && local.fullStories[story.ID.toString()]
+			if (
+				!local ||
+				!_.isEqual(
+					localStory,
+					story
+				)
+			) {
+				this.commands.push(() => {
+					console.log('sendFullStory', story.ID)
+					return this.mosDevice.sendROStory(story)
+				})
+			}
+		})
 		// At the end, store the updated RO:
 		this.ros[roId] = {
 			ro: ro,
-			storyList: newStoryList
+			storyList: newStoryList,
+			fullStories: newStories
 		}
 
 		this.triggerCheckQueue()
