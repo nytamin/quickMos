@@ -74,7 +74,7 @@
   "dependencies": {
     "chokidar": "^3.2.1",
     "fast-clone": "^1.5.13",
-    "mos-connection": "^0.8.10",
+    "mos-connection": "0.8.10-nightly-featur-ncs-functions-20200717-111015-12bd22d.0",
     "tslib": "^1.10.0",
     "underscore": "^1.9.1"
   }
