@@ -45,16 +45,8 @@ export interface Config {
 	devices: IMOSDeviceConnectionOptions[]
 }
 const config: Config = {
-	mosConnection: {
-		mosID: 'quick-mos',
-		acceptsConnections: true,
-		profiles: {
-			'0': true,
-			'1': true,
-			'2': true,
-			'3': true,
-		},
-	},
+	// @ts-expect-error
+	mosConnection: {},
 	devices: [],
 }
 
@@ -65,7 +57,6 @@ const mos: {
 let running = false
 let waiting = false
 function triggerReload() {
-	console.log('triggerReload')
 	setTimeout(() => {
 		waiting = false
 		if (running) {
@@ -93,15 +84,28 @@ const monitors: { [id: string]: MOSMonitor } = {}
 const runningOrderIds: { [id: string]: number } = {}
 
 async function reloadInner() {
-	console.log('reloadInner')
 	const newConfig: Config = loadFile('../input/config.ts').config
-	if (!_.isEqual(newConfig.mosConnection, config.mosConnection) || !mos.mosConnection) {
-		console.log('Restarting mosConnection')
+	if (!mos.mosConnection || !_.isEqual(newConfig.mosConnection, config.mosConnection)) {
+		if (!mos.mosConnection) {
+			console.log('Starting MosConnection')
+		} else {
+			console.log('Restarting MosConnection')
+		}
+
+		// Save the new config:
 		config.mosConnection = newConfig.mosConnection
+		config.devices = newConfig.devices
+
+		// Kill the old:
 		if (mos.mosConnection) {
 			await mos.mosConnection.dispose()
 		}
+
+		// Set up the new:
 		mos.mosConnection = new MosConnection(config.mosConnection)
+		mos.mosConnection.on('error', (err) => {
+			console.log('Error emitted from MosConnection', err)
+		})
 
 		mos.mosConnection.onConnection((mosDevice: MosDevice) => {
 			console.log('new mos connection', mosDevice.ID)
@@ -184,11 +188,11 @@ async function reloadInner() {
 		})
 		await mos.mosConnection.init()
 
-		for (const deviceConfig of newConfig.devices) {
+		for (const deviceConfig of config.devices) {
 			const mosDevice = await mos.mosConnection.connect(deviceConfig)
-			console.log('created mosDevice', mosDevice.ID)
+			console.log('Created mosDevice', mosDevice.ID)
 		}
-		console.log('mos initialized')
+		console.log('MosConnection initialized')
 	}
 
 	refreshFiles()
@@ -222,20 +226,26 @@ function fetchRunningOrders() {
 	const runningOrders: { ro: IMOSRunningOrder; stories: IMOSROFullStory[] }[] = []
 	_.each(getAllFilesInDirectory('input/runningorders'), (filePath) => {
 		const requirePath = '../' + filePath.replace(/\\/g, '/')
+		try {
+			if (
+				requirePath.match(/[/\\]_/) || // ignore and folders files that begin with "_"
+				requirePath.match(/[/\\]lib\.ts/) // ignore lib files
+			) {
+				return
+			}
+			if (filePath.match(/\.ts$/)) {
+				const fileContents = loadFile(requirePath)
+				const ro: IMOSRunningOrder = fileContents.runningOrder
+				ro.ID = new MosString128(filePath.replace(/[\W]/g, '_'))
 
-		if (requirePath.match(/[/\\]_/)) {
-			// ignore and folders files that begin with "_"
-			return
-		}
-		if (filePath.match(/\.ts$/)) {
-			const fileContents = loadFile(requirePath)
-			const ro: IMOSRunningOrder = fileContents.runningOrder as any
-			ro.ID = new MosString128(filePath.replace(/[\W]/g, '_'))
-
-			runningOrders.push({
-				ro,
-				stories: fileContents.fullStories,
-			})
+				runningOrders.push({
+					ro,
+					stories: fileContents.fullStories,
+				})
+			}
+		} catch (err) {
+			console.log(`Error when parsing file "${requirePath}"`)
+			throw err
 		}
 	})
 	return runningOrders
