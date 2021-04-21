@@ -1,4 +1,4 @@
-import { Config } from '../src'
+import { Config } from '../src/.' // eslint-disable-line node/no-unpublished-import
 
 export const config: Config = {
 	mosConnection: {
@@ -9,8 +9,8 @@ export const config: Config = {
 			'0': true,
 			'1': true,
 			'2': true,
-			'3': true
-		}
+			'3': true,
+		},
 	},
-	devices: []
+	devices: [],
 }

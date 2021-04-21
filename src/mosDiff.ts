@@ -1,4 +1,3 @@
-
 export interface ListEntry<T> {
 	/** ID that uniquely identifies this entry */
 	id: string
@@ -14,7 +13,7 @@ export enum OperationType {
 	INSERT = 'insert',
 	UPDATE = 'update',
 	REMOVE = 'remove',
-	MOVE = 'move'
+	MOVE = 'move',
 }
 export interface OperationInsert<T> {
 	type: OperationType.INSERT
@@ -41,16 +40,13 @@ export interface OperationMove {
 	beforeId: string
 }
 /** Takes an old and a new list, and returns the operations needed to synk the two */
-export function diffLists<T> (
-	oldList: ListEntry<T>[],
-	newList: ListEntry<T>[]
-): Operation<T>[] {
+export function diffLists<T>(oldList: ListEntry<T>[], newList: ListEntry<T>[]): Operation<T>[] {
 	// Preparations:
 	const operations: Operation<T>[] = []
-	const oldLookup: {[id: string]: { changedHash: string }} = {}
-	const newLookup: {[id: string]: { changedHash: string, entry: ListEntry<T> }} = {}
+	const oldLookup: { [id: string]: { changedHash: string } } = {}
+	const newLookup: { [id: string]: { changedHash: string; entry: ListEntry<T> } } = {}
 
-	for (let entry of oldList) {
+	for (const entry of oldList) {
 		if (!entry.id) throw new Error(`An entry in oldList is missing required property "id"!`)
 		oldLookup[entry.id] = { changedHash: entry.changedHash }
 	}
@@ -71,18 +67,20 @@ export function diffLists<T> (
 				currentInsertOperation.inserts.push({
 					id: entry.id,
 					changedHash: entry.changedHash,
-					content: entry.content
+					content: entry.content,
 				})
 				currentInsertOperation.beforeId = nextId
 			} else {
 				currentInsertOperation = {
 					type: OperationType.INSERT,
 					beforeId: nextId,
-					inserts: [{
-						id: entry.id,
-						changedHash: entry.changedHash,
-						content: entry.content
-					}]
+					inserts: [
+						{
+							id: entry.id,
+							changedHash: entry.changedHash,
+							content: entry.content,
+						},
+					],
 				}
 			}
 		} else {
@@ -95,7 +93,7 @@ export function diffLists<T> (
 					type: OperationType.UPDATE,
 					id: entry.id,
 					changedHash: entry.changedHash,
-					content: entry.content
+					content: entry.content,
 				})
 			}
 		}
@@ -106,14 +104,14 @@ export function diffLists<T> (
 	}
 	// Find removed:
 	let currentRemoveOperation: OperationRemove | null = null
-	for (let entry of oldList) {
+	for (const entry of oldList) {
 		if (!newLookup[entry.id]) {
 			if (currentRemoveOperation) {
 				currentRemoveOperation.ids.push(entry.id)
 			} else {
 				currentRemoveOperation = {
 					type: OperationType.REMOVE,
-					ids: [ entry.id ]
+					ids: [entry.id],
 				}
 			}
 		}
@@ -131,9 +129,9 @@ export function diffLists<T> (
 
 	// Find Moved:
 	let currentMoveOperation: OperationMove | null = null
-	let currentMovePrevId: string = ''
+	let currentMovePrevId = ''
 	const getInterPrevId = (id: string): string => {
-		const index = interList.findIndex(e => e.id === id)
+		const index = interList.findIndex((e) => e.id === id)
 		return index > 0 ? interList[index - 1].id : ''
 	}
 
@@ -143,12 +141,11 @@ export function diffLists<T> (
 		// const prevEntry: ListEntry<T> | undefined = newList[i - 1]
 		const prevId = newList[i - 1] ? newList[i - 1].id : ''
 		// const nextEntry: ListEntry<T> | undefined = newList[i + 1]
-		let nextId = newList[i + 1] ? newList[i + 1].id : ''
+		const nextId = newList[i + 1] ? newList[i + 1].id : ''
 
 		const interRefPrevId = getInterPrevId(entry.id)
 
 		if (currentMoveOperation) {
-
 			if (interRefPrevId !== currentMovePrevId) {
 				// The new entry is not following after the same element as the one that was before the beginning of the move operation
 				currentMoveOperation.ids.push(entry.id)
@@ -164,20 +161,18 @@ export function diffLists<T> (
 						if (i > 0 && currentMoveOperation.ids[i - 1] === prev0) {
 							// The previous id is in the original order, continue
 						} else {
-							if (
-								prev0 === entry.id
-							) {
+							if (prev0 === entry.id) {
 								// Yes, we can replace a number of ids with another move operation.
 								if (i > 0) {
 									currentMoveOperation.beforeId = currentMoveOperation.ids[i]
 									currentMoveOperation.ids.length = i // remove entries after i
 									operations.push(currentMoveOperation)
-									interList = applyOperations(interList, [ currentMoveOperation ])
+									interList = applyOperations(interList, [currentMoveOperation])
 								}
 								currentMoveOperation = {
 									type: OperationType.MOVE,
 									beforeId: nextId,
-									ids: [ entry.id ]
+									ids: [entry.id],
 								}
 							}
 							break
@@ -187,7 +182,7 @@ export function diffLists<T> (
 				// Commit the move operation:
 				// currentMoveOperation.beforeId = nextId
 				operations.push(currentMoveOperation)
-				interList = applyOperations(interList, [ currentMoveOperation ])
+				interList = applyOperations(interList, [currentMoveOperation])
 				currentMoveOperation = null
 				currentMovePrevId = ''
 			}
@@ -196,7 +191,7 @@ export function diffLists<T> (
 			currentMoveOperation = {
 				type: OperationType.MOVE,
 				beforeId: nextId,
-				ids: [ entry.id ]
+				ids: [entry.id],
 			}
 			currentMovePrevId = prevId
 		} else {
@@ -210,23 +205,20 @@ export function diffLists<T> (
 	}
 	return operations
 }
-export function applyOperations<T> (
-	oldList: ListEntry<T>[],
-	operations: Operation<T>[]
-): ListEntry<T>[] {
+export function applyOperations<T>(oldList: ListEntry<T>[], operations: Operation<T>[]): ListEntry<T>[] {
 	let newList: ListEntry<T>[] = oldList.slice() // clone
 
 	// Apply Inserts, updates & removes on intermediary list:
-	for (let operation of operations) {
+	for (const operation of operations) {
 		if (operation.type === OperationType.INSERT) {
-			const entries = operation.inserts.map(insert => ({
+			const entries = operation.inserts.map((insert) => ({
 				id: insert.id,
 				changedHash: insert.changedHash,
-				content: insert.content
+				content: insert.content,
 			}))
 			if (operation.beforeId) {
 				const beforeId = operation.beforeId
-				const index = newList.findIndex(e => e.id === beforeId)
+				const index = newList.findIndex((e) => e.id === beforeId)
 				if (index === -1) throw new Error(`INSERT: beforeId "${beforeId}" not found in list!`)
 				newList.splice(index, 0, ...entries)
 			} else {
@@ -235,19 +227,19 @@ export function applyOperations<T> (
 			}
 		} else if (operation.type === OperationType.UPDATE) {
 			const idToUpdate = operation.id
-			const entry = newList.find(e => e.id === idToUpdate)
+			const entry = newList.find((e) => e.id === idToUpdate)
 			if (!entry) throw new Error(`UPDATE: id "${idToUpdate}" not found in newList!`)
 			entry.changedHash = operation.changedHash
 		} else if (operation.type === OperationType.REMOVE) {
 			const idsToRemove = operation.ids
-			newList = newList.filter(e => !idsToRemove.includes(e.id))
+			newList = newList.filter((e) => !idsToRemove.includes(e.id))
 		} else if (operation.type === OperationType.MOVE) {
 			const ids = operation.ids
-			const moveEntries = extractList(newList, e => ids.indexOf(e.id))
+			const moveEntries = extractList(newList, (e) => ids.indexOf(e.id))
 			let index = -1
 			if (operation.beforeId) {
 				const beforeId = operation.beforeId
-				index = newList.findIndex(e => e.id === beforeId)
+				index = newList.findIndex((e) => e.id === beforeId)
 				newList.splice(index, 0, ...moveEntries)
 			} else {
 				// move last:
@@ -259,7 +251,7 @@ export function applyOperations<T> (
 	return newList
 }
 /** Find and extract entries from list, and return them */
-function extractList<T> (list: T[], fcn: (value: T) => number): T[] {
+function extractList<T>(list: T[], fcn: (value: T) => number): T[] {
 	const list0: T[] = []
 	for (let i = list.length - 1; i >= 0; i--) {
 		const index = fcn(list[i])
@@ -270,6 +262,6 @@ function extractList<T> (list: T[], fcn: (value: T) => number): T[] {
 	}
 	return makeDenseArray(list0)
 }
-function makeDenseArray (sparse) {
-	return sparse.filter(x => x !== undefined && x != null)
+function makeDenseArray(sparse) {
+	return sparse.filter((x) => x !== undefined && x != null)
 }

@@ -1,18 +1,4 @@
-import {
-	IMOSRunningOrder,
-	MosString128,
-	IMOSScope,
-	IMOSROFullStory
- } from 'mos-connection'
-
-type NormalizeMosAttributes<T> = {
-	[P in keyof T]:
-		T[P] extends MosString128 ?
-		string :
-		T[P] extends string | number | null | undefined ?
-		T[P] :
-		NormalizeMosAttributes<T[P]>
-}
+import { IMOSScope } from 'mos-connection'
 
 // export const runningOrder: NormalizeMosAttributes<IMOSRunningOrder> = {
 export const runningOrder: any = {
@@ -28,10 +14,10 @@ export const runningOrder: any = {
 		{
 			MosSchema: 'http://MYMOSSCHEMA',
 			MosPayload: {
-				attribute: 'example'
+				attribute: 'example',
 			},
-			MosScope: IMOSScope.PLAYLIST
-		}
+			MosScope: IMOSScope.PLAYLIST,
+		},
 	],
 	Stories: [
 		{ Slug: 'TITLE A;STORY_A', ID: 'STORY_A', Items: [] },
@@ -45,7 +31,7 @@ export const runningOrder: any = {
 		{ Slug: 'TITLE E;STORY_I', ID: 'STORY_I', Items: [] },
 		{ Slug: 'TITLE B;STORY_J', ID: 'STORY_J', Items: [] },
 		{ Slug: 'TITLE C;STORY_K', ID: 'STORY_K', Items: [] },
-	]
+	],
 }
 // export const fullStories: NormalizeMosAttributes<IMOSROFullStory>[] = [
 export const fullStories: any[] = [
@@ -57,15 +43,15 @@ export const fullStories: any[] = [
 				MosScope: IMOSScope.PLAYLIST,
 				MosSchema: 'http://MYMOSSCHEMA',
 				MosPayload: {
-					attribute: 'example'
-				}
-			}
+					attribute: 'example',
+				},
+			},
 		],
 		RunningOrderId: 'filename',
 		Body: [
 			{
 				Type: 'p',
-				Content: { '@name': 'p', '@type': 'element' }
+				Content: { '@name': 'p', '@type': 'element' },
 			},
 			{
 				Type: 'storyItem',
@@ -79,17 +65,18 @@ export const fullStories: any[] = [
 							MosScope: 'PLAYLIST',
 							MosSchema: 'http://MYMOSSCHEMA2',
 							MosPayload: {
-								attribute: 'example'
-							}
-						}
+								attribute: 'example',
+							},
+						},
 					],
 					mosAbstract: 'This is the Absctract',
-					ObjectSlug: 'This is the Slug'
-				}
+					ObjectSlug: 'This is the Slug',
+				},
 			},
 			{
-				Type: 'p', Content: { text: 'This is an example text','@name': 'p', '@type': 'text' },
-			}
-		]
-	}
+				Type: 'p',
+				Content: { text: 'This is an example text', '@name': 'p', '@type': 'text' },
+			},
+		],
+	},
 ]
