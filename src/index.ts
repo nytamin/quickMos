@@ -233,7 +233,7 @@ function fetchRunningOrders() {
 			) {
 				return
 			}
-			if (filePath.match(/\.ts$/)) {
+			if (filePath.match(/(\.ts|.json)$/)) {
 				const fileContents = loadFile(requirePath)
 				const ro: IMOSRunningOrder = fileContents.runningOrder
 				ro.ID = new MosString128(filePath.replace(/[\W]/g, '_'))
