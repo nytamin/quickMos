@@ -90,7 +90,7 @@ function loadFile(requirePath) {
 
 	if (
 		mosData.runningOrder 
-		&& mosData.runningOrder.EditorialDuraion 
+		&& mosData.runningOrder.EditorialDuration 
 		&& !(mosData.runningOrder.EditorialDuration instanceof MosDuration)
 	) {
 		let s = mosData.runningOrder.EditorialDuration._duration
@@ -104,7 +104,7 @@ function loadFile(requirePath) {
 
 		mosData.runningOrder.EditorialDuration = new MosDuration(hh + ':' + mm + ':' + ss)
 	}
-	
+
 	return mosData
 }
 const monitors: { [id: string]: MOSMonitor } = {}
