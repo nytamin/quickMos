@@ -14,6 +14,7 @@ import {
 	MosDevice,
 	IMOSListMachInfo,
 	MosTime,
+	MosDuration,
 } from 'mos-connection'
 import { diffLists, ListEntry, OperationType } from './mosDiff'
 import * as crypto from 'crypto'
@@ -78,7 +79,33 @@ function triggerReload() {
 }
 function loadFile(requirePath) {
 	delete require.cache[require.resolve(requirePath)]
-	return require(requirePath)
+	const mosData = require(requirePath)
+	if (
+		mosData.runningOrder 
+		&& mosData.runningOrder.EditorialStart 
+		&& !(mosData.runningOrder.EditorialStart instanceof MosTime)
+	) {
+		mosData.runningOrder.EditorialStart = new MosTime(mosData.runningOrder.EditorialStart._time)
+	}
+
+	if (
+		mosData.runningOrder 
+		&& mosData.runningOrder.EditorialDuraion 
+		&& !(mosData.runningOrder.EditorialDuration instanceof MosDuration)
+	) {
+		let s = mosData.runningOrder.EditorialDuration._duration
+		let hh = Math.floor(s / 3600)
+		s -= hh * 3600
+
+		let mm = Math.floor(s / 60)
+		s -= mm * 60
+
+		let ss = Math.floor(s)
+
+		mosData.runningOrder.EditorialDuration = new MosDuration(hh + ':' + mm + ':' + ss)
+	}
+	
+	return mosData
 }
 const monitors: { [id: string]: MOSMonitor } = {}
 const runningOrderIds: { [id: string]: number } = {}
