@@ -388,7 +388,7 @@ class MOSMonitor {
 					} else if (operation.type === OperationType.UPDATE) {
 						const updatedStory = operation.content
 						this.commands.push(() => {
-							console.log('sendROInsertStories', ro.ID)
+							console.log('sendROReplaceStories', ro.ID)
 							return this.mosDevice.sendROReplaceStories(
 								{
 									RunningOrderID: ro.ID,
@@ -610,7 +610,7 @@ function fakeOnUpdatedRunningOrder(ro: IMOSRunningOrder, _fullStories: IMOSROFul
 					// })
 				} else if (operation.type === OperationType.UPDATE) {
 					// const updatedStory = operation.content
-					console.log('sendROInsertStories', ro.ID)
+					console.log('sendROReplaceStories', ro.ID)
 					// this.commands.push(() => {
 					// 	return this.mosDevice.sendROReplaceStories({
 					// 		RunningOrderID: ro.ID,
