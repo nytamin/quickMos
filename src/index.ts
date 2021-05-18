@@ -333,6 +333,8 @@ class MOSMonitor {
 						return this.mosDevice.sendROStory(story)
 					})
 				})
+
+				this.triggerCheckQueue()
 			}, 100)
 			return local.ro
 		} else throw new Error(`ro ${roId} not found`)
