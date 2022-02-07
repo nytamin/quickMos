@@ -1,6 +1,5 @@
 import { IMOSScope } from 'mos-connection'
 
-// export const runningOrder: NormalizeMosAttributes<IMOSRunningOrder> = {
 export const runningOrder: any = {
 	ID: 'filename',
 	Slug: 'Evening show1',
@@ -33,7 +32,6 @@ export const runningOrder: any = {
 		{ Slug: 'TITLE C;STORY_K', ID: 'STORY_K', Items: [] },
 	],
 }
-// export const fullStories: NormalizeMosAttributes<IMOSROFullStory>[] = [
 export const fullStories: any[] = [
 	{
 		ID: 'STORY_A',

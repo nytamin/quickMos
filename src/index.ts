@@ -81,17 +81,17 @@ function loadFile(requirePath) {
 	delete require.cache[require.resolve(requirePath)]
 	const mosData = require(requirePath)
 	if (
-		mosData.runningOrder
-		&& mosData.runningOrder.EditorialStart
-		&& !(mosData.runningOrder.EditorialStart instanceof MosTime)
+		mosData.runningOrder &&
+		mosData.runningOrder.EditorialStart &&
+		!(mosData.runningOrder.EditorialStart instanceof MosTime)
 	) {
 		mosData.runningOrder.EditorialStart = new MosTime(mosData.runningOrder.EditorialStart._time)
 	}
 
 	if (
-		mosData.runningOrder
-		&& mosData.runningOrder.EditorialDuration
-		&& !(mosData.runningOrder.EditorialDuration instanceof MosDuration)
+		mosData.runningOrder &&
+		mosData.runningOrder.EditorialDuration &&
+		!(mosData.runningOrder.EditorialDuration instanceof MosDuration)
 	) {
 		let s = mosData.runningOrder.EditorialDuration._duration
 		let hh = Math.floor(s / 3600)
@@ -205,7 +205,7 @@ async function reloadInner() {
 				return Promise.resolve(ros.map((r) => r.ro))
 			})
 			mosDevice.onRequestRunningOrder((roId) => {
-				const ro = monitors[mosId].resendRunningOrder((roId as any) as string)
+				const ro = monitors[mosId].resendRunningOrder(roId as any as string)
 				return Promise.resolve(ro)
 			})
 			// mosDevice.onROStory((story: IMOSROFullStory) => Promise<IMOSROAck>): void;
@@ -497,6 +497,7 @@ class MOSMonitor {
 				})
 			}
 		})
+
 		// At the end, store the updated RO:
 		this.ros[roId] = {
 			ro: ro,
