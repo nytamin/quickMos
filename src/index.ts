@@ -15,6 +15,7 @@ import {
 	IMOSListMachInfo,
 	MosTime,
 	MosDuration,
+	IMOSObjectAirStatus,
 } from 'mos-connection'
 import { diffLists, ListEntry, OperationType } from './mosDiff'
 import * as crypto from 'crypto'
@@ -230,6 +231,7 @@ function refreshFiles() {
 	_.each(fetchRunningOrders(), (r) => {
 		const runningOrder = r.ro
 		const stories = r.stories
+		const readyToAir = r.readyToAir
 
 		const id = runningOrder.ID.toString()
 		runningOrderIds[id] = t
@@ -237,7 +239,7 @@ function refreshFiles() {
 			fakeOnUpdatedRunningOrder(runningOrder, stories)
 		} else {
 			_.each(monitors, (monitor) => {
-				monitor.onUpdatedRunningOrder(runningOrder, stories)
+				monitor.onUpdatedRunningOrder(runningOrder, stories, readyToAir)
 			})
 		}
 	})
@@ -250,7 +252,7 @@ function refreshFiles() {
 	})
 }
 function fetchRunningOrders() {
-	const runningOrders: { ro: IMOSRunningOrder; stories: IMOSROFullStory[] }[] = []
+	const runningOrders: { ro: IMOSRunningOrder; stories: IMOSROFullStory[]; readyToAir: boolean }[] = []
 	_.each(getAllFilesInDirectory('input/runningorders'), (filePath) => {
 		const requirePath = '../' + filePath.replace(/\\/g, '/')
 		try {
@@ -268,6 +270,7 @@ function fetchRunningOrders() {
 				runningOrders.push({
 					ro,
 					stories: fileContents.fullStories,
+					readyToAir: fileContents.READY_TO_AIR,
 				})
 			}
 		} catch (err) {
@@ -306,6 +309,7 @@ class MOSMonitor {
 			ro: IMOSRunningOrder
 			storyList: ListEntry<IMOSROStory>[]
 			fullStories: { [id: string]: IMOSROFullStory }
+			readyToAir: boolean
 		}
 	} = {}
 	private queueRunning = false
@@ -339,9 +343,10 @@ class MOSMonitor {
 			return local.ro
 		} else throw new Error(`ro ${roId} not found`)
 	}
-	onUpdatedRunningOrder(ro: IMOSRunningOrder, fullStories: IMOSROFullStory[]): void {
+	onUpdatedRunningOrder(ro: IMOSRunningOrder, fullStories: IMOSROFullStory[], readyToAir: boolean | undefined): void {
 		// compare with
 		const roId = ro.ID.toString()
+		readyToAir = readyToAir || false
 		console.log('onUpdatedRunningOrder ----------', roId)
 
 		const local = this.ros[roId]
@@ -481,6 +486,15 @@ class MOSMonitor {
 				})
 			}
 		}
+		if (readyToAir !== local?.readyToAir) {
+			this.commands.push(() => {
+				console.log('sendReadyToAir', ro.ID, readyToAir)
+				return this.mosDevice.sendReadyToAir({
+					ID: ro.ID,
+					Status: readyToAir ? IMOSObjectAirStatus.READY : IMOSObjectAirStatus.NOT_READY,
+				})
+			})
+		}
 
 		console.log('stories', fullStories.length)
 		const newStories: { [id: string]: IMOSROFullStory } = {}
@@ -503,6 +517,7 @@ class MOSMonitor {
 			ro: ro,
 			storyList: newStoryList,
 			fullStories: newStories,
+			readyToAir: readyToAir || false,
 		}
 
 		this.triggerCheckQueue()

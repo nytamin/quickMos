@@ -1,5 +1,7 @@
 import { IMOSScope } from 'mos-connection'
 
+export const READY_TO_AIR = false
+
 export const runningOrder: any = {
 	ID: 'filename',
 	Slug: 'Evening show1',
