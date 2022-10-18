@@ -69,7 +69,7 @@
   "dependencies": {
     "chokidar": "^3.5.1",
     "fast-clone": "^1.5.13",
-    "mos-connection": "1.0.3",
+    "mos-connection": "^2.0.1",
     "tslib": "^2.2.0",
     "underscore": "^1.13.1"
   },

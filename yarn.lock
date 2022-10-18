@@ -3436,18 +3436,18 @@ mkdirp@^0.5.1:
   dependencies:
     minimist "^1.2.5"
 
-moment@^2.29.1:
-  version "2.29.1"
-  resolved "https://registry.yarnpkg.com/moment/-/moment-2.29.1.tgz#b2be769fa31940be9eeea6469c075e35006fa3d3"
-  integrity sha512-kHmoybcPV8Sqy59DwNDY3Jefr64lK/by/da0ViFcuA4DH0vQg5Q6Ze5VimxkfQNSC+Mls/Kx53s7TjP1RhFEDQ==
+moment@^2.29.4:
+  version "2.29.4"
+  resolved "https://registry.yarnpkg.com/moment/-/moment-2.29.4.tgz#3dbe052889fe7c1b2ed966fcb3a77328964ef108"
+  integrity sha512-5LC9SOxjSc2HF6vO2CyuTDNivEdoz2IvyJJGj6X8DJ0eFyfszE0QiEd+iXmBvUP3WHxSjFH/vIsA0EN00cgr8w==
 
-mos-connection@1.0.3:
-  version "1.0.3"
-  resolved "https://registry.yarnpkg.com/mos-connection/-/mos-connection-1.0.3.tgz#8417141668799b006e931a3afd9adee22d920952"
-  integrity sha512-Rw6Irt/MJoSrMuxT3dd//WNxIDT/lsFxOANkGssEDLC1dBg2scAjH6ND3ELpnua+hy9oDrpwNmcRsm9hTRNbqQ==
+mos-connection@^2.0.1:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/mos-connection/-/mos-connection-2.0.1.tgz#6be8aa6641f1695870dd4c361de25f00ef6a4d5a"
+  integrity sha512-JKg4NIaLw8hmAJMUqem7RyJIJPKX19PEBHmbvKHY55eGYyTKITAWxcsdU/+K8ZXVejzgylmXYEqnhcfBhzCpOw==
   dependencies:
     iconv-lite "^0.6.2"
-    moment "^2.29.1"
+    moment "^2.29.4"
     tslib "^2.2.0"
     xml-js "^1.6.11"
     xmlbuilder "^15.1.1"
