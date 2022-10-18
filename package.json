@@ -42,12 +42,9 @@
     "@sofie-automation/code-standard-preset": "^0.2.5",
     "@types/jest": "^26.0.23",
     "@types/node": "^12.7.9",
-    "@types/underscore": "^1.11.2",
-    "eslint-plugin-prettier": "^3.3.1",
+    "@types/underscore": "^1.11.4",
     "jest": "^26.6.3",
-    "mkdirp": "^1.0.4",
     "open-cli": "^6.0.1",
-    "prettier": "^2.3.0",
     "rimraf": "^3.0.2",
     "ts-jest": "^26.5.6",
     "ts-node": "^9.1.1",
@@ -67,11 +64,11 @@
     "production"
   ],
   "dependencies": {
-    "chokidar": "^3.5.1",
+    "chokidar": "^3.5.3",
     "fast-clone": "^1.5.13",
     "mos-connection": "^2.0.1",
-    "tslib": "^2.2.0",
-    "underscore": "^1.13.1"
+    "tslib": "^2.4.0",
+    "underscore": "^1.13.6"
   },
   "prettier": "@sofie-automation/code-standard-preset/.prettierrc.json"
 }

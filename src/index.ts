@@ -28,6 +28,8 @@ const DELAY_TIME = 300 // ms
 
 const watcher = chokidar.watch('input/**', { ignored: /^\./, persistent: true })
 
+const simulateFrequentEditing = false
+
 watcher
 	.on('add', () => {
 		triggerReload()
@@ -314,7 +316,43 @@ class MOSMonitor {
 	} = {}
 	private queueRunning = false
 
-	constructor(private mosDevice: MosDevice) {}
+	constructor(private mosDevice: MosDevice) {
+		setTimeout(() => this.triggerRandomUpdate(), 10000) // startup delay
+	}
+
+	triggerRandomUpdate() {
+		if (simulateFrequentEditing) {
+			const roIds = Object.keys(this.ros)
+
+			// only fire if the queue is sufficiently small (to avoid a backlog)
+			if (roIds.length > 0 && (!this.queueRunning || this.commands.length < 5)) {
+				const roId = roIds[_.random(roIds.length - 1)]
+				const ro = this.ros[roId]
+				if (ro) {
+					const storyIds = ro.storyList.map((s) => s.id)
+					const storyId = storyIds[_.random(storyIds.length - 1)]
+					const story = ro.fullStories[storyId]
+					if (story) {
+						// send it
+						console.log('simulating edit')
+						this.commands.push(() => {
+							console.log('sendFullStory', story.ID)
+							return this.mosDevice.sendROStory(story)
+						})
+						this.triggerCheckQueue()
+					}
+				}
+
+				// run again
+				setTimeout(() => this.triggerRandomUpdate(), 500) // abritrary gap
+			} else {
+				console.log('skipping simulated edit')
+				// run again
+				setTimeout(() => this.triggerRandomUpdate(), 10000) // abritrary gap
+			}
+		}
+	}
+
 	onDeletedRunningOrder(roId: string) {
 		console.log('onDeletedRunningOrder', roId)
 		if (this.ros[roId]) {
