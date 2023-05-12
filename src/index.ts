@@ -14,6 +14,8 @@ import {
 	IMOSListMachInfo,
 	IMOSObjectAirStatus,
 	getMosTypes,
+	MosModel,
+	IMOSAckStatus,
 } from '@mos-connection/connector'
 
 import { diffLists, ListEntry, OperationType } from './mosDiff'
@@ -44,17 +46,28 @@ watcher
 	})
 
 export interface Config {
-	mosConnection: IConnectionConfig
-	devices: IMOSDeviceConnectionOptions[]
+	primary: {
+		enable: boolean
+		mosConnection: IConnectionConfig
+		devices: IMOSDeviceConnectionOptions[]
+	}
+	buddy?: {
+		enable: boolean
+		mosConnection: IConnectionConfig
+		devices: IMOSDeviceConnectionOptions[]
+	}
 }
 const config: Config = {
-	// @ts-expect-error just a stub, will be overwritten by /input/config.ts
-	mosConnection: {},
-	devices: [],
+	primary: {
+		// @ts-expect-error just a stub, will be overwritten by /input/config.ts
+		mosConnection: {},
+		devices: [],
+	},
 }
 
 const mos: {
-	mosConnection?: MosConnection
+	mosPrimaryConnection?: MosConnection
+	mosBuddyConnection?: MosConnection
 } = {}
 
 let running = false
@@ -113,34 +126,39 @@ function loadFile(requirePath) {
 	return mosData
 }
 const monitors: { [id: string]: MOSMonitor } = {}
+const buddyMonitors: { [id: string]: MOSMonitor } = {}
 const runningOrderIds: { [id: string]: number } = {}
 
 async function reloadInner() {
 	const newConfig: Config = loadFile('../input/config.ts').config
-	if (!mos.mosConnection || !_.isEqual(newConfig.mosConnection, config.mosConnection)) {
-		if (!mos.mosConnection) {
-			console.log('Starting MosConnection')
+	if (
+		newConfig.primary.enable &&
+		(!mos.mosPrimaryConnection || !_.isEqual(newConfig.primary.mosConnection, config.primary.mosConnection))
+	) {
+		if (!mos.mosPrimaryConnection) {
+			console.log('Starting Primary MosConnection')
 		} else {
-			console.log('Restarting MosConnection')
+			console.log('Restarting Primary MosConnection')
 		}
 
 		// Save the new config:
-		config.mosConnection = newConfig.mosConnection
-		config.devices = newConfig.devices
+		config.primary.enable = newConfig.primary.enable
+		config.primary.mosConnection = newConfig.primary.mosConnection
+		config.primary.devices = newConfig.primary.devices
 
 		// Kill the old:
-		if (mos.mosConnection) {
-			await mos.mosConnection.dispose()
+		if (mos.mosPrimaryConnection) {
+			await mos.mosPrimaryConnection.dispose()
 		}
 
 		// Set up the new:
-		mos.mosConnection = new MosConnection(config.mosConnection)
-		mos.mosConnection.on('error', (err) => {
-			console.log('Error emitted from MosConnection', err)
+		mos.mosPrimaryConnection = new MosConnection(config.primary.mosConnection)
+		mos.mosPrimaryConnection.on('error', (err) => {
+			console.log('Error emitted from Primary MosConnection', err)
 		})
 
-		mos.mosConnection.onConnection((mosDevice: MosDevice) => {
-			console.log('new mos connection', mosDevice.ID)
+		mos.mosPrimaryConnection.onConnection((mosDevice: MosDevice) => {
+			console.log('new primary mos connection', mosDevice.ID)
 
 			mosDevice.onGetMachineInfo(async () => {
 				const machineInfo: IMOSListMachInfo = {
@@ -150,7 +168,7 @@ async function reloadInner() {
 					swRev: getMosTypes(true).mosString128.create('1.0'),
 					DOM: getMosTypes(true).mosString128.create(0),
 					SN: getMosTypes(true).mosString128.create('<<<Mock SN>>>'),
-					ID: getMosTypes(true).mosString128.create(config.mosConnection.mosID),
+					ID: getMosTypes(true).mosString128.create(config.primary.mosConnection.mosID),
 					time: getMosTypes(true).mosTime.create(Date.now()),
 					// opTime?: MosTime;
 					mosRev: getMosTypes(true).mosString128.create('0'),
@@ -171,7 +189,7 @@ async function reloadInner() {
 				return machineInfo
 			})
 			mosDevice.onConnectionChange(() => {
-				console.log(mosDevice.ID, 'connection change', mosDevice.getConnectionStatus())
+				console.log(mosDevice.ID, 'primary connection change', mosDevice.getConnectionStatus())
 			})
 
 			const mosId = getMosTypes(true).mosString128.valueOf(mosDevice.ID)
@@ -205,7 +223,7 @@ async function reloadInner() {
 			// mosDevice.onMosReqSearchableSchema((username: string) => Promise<IMOSSearchableSchema>): void;
 			// mosDevice.onMosReqObjectList((objList: IMosRequestObjectList) => Promise<IMosObjectList>): void;
 			// mosDevice.onMosReqObjectAction((action: string, obj: IMOSObject) => Promise<IMOSAck>): void;
-			mosDevice.onROReqAll(() => {
+			mosDevice.onRequestAllRunningOrders(() => {
 				const ros = fetchRunningOrders()
 				return Promise.resolve(ros.map((r) => r.ro))
 			})
@@ -218,13 +236,147 @@ async function reloadInner() {
 				refreshFiles()
 			}, 500)
 		})
-		await mos.mosConnection.init()
+		await mos.mosPrimaryConnection.init()
 
-		for (const deviceConfig of config.devices) {
-			const mosDevice = await mos.mosConnection.connect(deviceConfig)
-			console.log('Created mosDevice', mosDevice.ID)
+		for (const deviceConfig of config.primary.devices) {
+			const mosDevice = await mos.mosPrimaryConnection.connect(deviceConfig)
+			console.log('Created primary mosDevice', mosDevice.ID)
 		}
-		console.log('MosConnection initialized')
+		console.log('Primary MosConnection initialized')
+	}
+	if (!newConfig.primary.enable && mos.mosPrimaryConnection) {
+		console.log('Stopping Primary MosConnection')
+
+		// kill the primary
+		await mos.mosPrimaryConnection.dispose()
+		mos.mosPrimaryConnection = undefined
+
+		// save config
+		config.primary.enable = newConfig.primary.enable
+		config.primary.mosConnection = newConfig.primary.mosConnection
+		config.primary.devices = newConfig.primary.devices
+	}
+
+	if (
+		newConfig.buddy?.enable &&
+		(!mos.mosBuddyConnection || !_.isEqual(newConfig.buddy?.mosConnection, config.buddy?.mosConnection))
+	) {
+		if (!mos.mosBuddyConnection) {
+			console.log('Starting Buddy MosConnection')
+		} else {
+			console.log('Restarting Buddy MosConnection')
+		}
+
+		// Save the new config:
+		config.buddy = {
+			enable: newConfig.buddy.enable,
+			mosConnection: newConfig.buddy.mosConnection,
+			devices: newConfig.buddy.devices,
+		}
+
+		// Kill the old:
+		if (mos.mosPrimaryConnection) {
+			await mos.mosPrimaryConnection.dispose()
+		}
+
+		// Set up the new:
+		mos.mosBuddyConnection = new MosConnection(config.buddy.mosConnection)
+		mos.mosBuddyConnection.on('error', (err) => {
+			console.log('Error emitted from Buddy MosConnection', err)
+		})
+
+		mos.mosBuddyConnection.onConnection((mosDevice: MosDevice) => {
+			console.log('new buddy mos connection', mosDevice.ID)
+
+			mosDevice.onGetMachineInfo(async () => {
+				const machineInfo: IMOSListMachInfo = {
+					manufacturer: getMosTypes(true).mosString128.create('<<<Mock Manufacturer>>>'),
+					model: getMosTypes(true).mosString128.create('<<<Mock model>>>'),
+					hwRev: getMosTypes(true).mosString128.create('1.0'),
+					swRev: getMosTypes(true).mosString128.create('1.0'),
+					DOM: getMosTypes(true).mosString128.create(0),
+					SN: getMosTypes(true).mosString128.create('<<<Mock SN>>>'),
+					ID: getMosTypes(true).mosString128.create(config.buddy?.mosConnection.mosID),
+					time: getMosTypes(true).mosTime.create(Date.now()),
+					mosRev: getMosTypes(true).mosString128.create('0'),
+					supportedProfiles: {
+						deviceType: 'NCS',
+						profile0: true,
+						profile1: true,
+						profile2: true,
+					},
+				}
+				return machineInfo
+			})
+			mosDevice.onConnectionChange(() => {
+				console.log(mosDevice.ID, 'buddy connection change', mosDevice.getConnectionStatus())
+			})
+
+			const mosId = getMosTypes(true).mosString128.valueOf(mosDevice.ID)
+
+			if (!buddyMonitors[mosId]) {
+				buddyMonitors[mosId] = new MOSMonitor(mosDevice, !config.primary.enable)
+			}
+			mosDevice.onRequestAllRunningOrders(() => {
+				if (config.primary.enable) {
+					throw new MosModel.MOSAck(
+						{
+							ID: getMosTypes(true).mosString128.create(0),
+							Revision: 0,
+							Description: getMosTypes(true).mosString128.create('Main server available'),
+							Status: IMOSAckStatus.NACK,
+						},
+						true
+					)
+				}
+				const ros = fetchRunningOrders()
+				return Promise.resolve(ros.map((r) => r.ro))
+			})
+			mosDevice.onRequestRunningOrder((roId) => {
+				if (config.primary.enable) {
+					throw new MosModel.MOSAck(
+						{
+							ID: getMosTypes(true).mosString128.create(0),
+							Revision: 0,
+							Description: getMosTypes(true).mosString128.create('Main server available'),
+							Status: IMOSAckStatus.NACK,
+						},
+						true
+					)
+				}
+				const ro = monitors[mosId].resendRunningOrder(roId as any as string)
+				return Promise.resolve(ro)
+			})
+			// mosDevice.onROStory((story: IMOSROFullStory) => Promise<IMOSROAck>): void;
+			setTimeout(() => {
+				refreshFiles()
+			}, 500)
+		})
+		await mos.mosBuddyConnection.init()
+
+		for (const deviceConfig of config.primary.devices) {
+			const mosDevice = await mos.mosBuddyConnection.connect(deviceConfig)
+			console.log('Created buddy mosDevice', mosDevice.ID)
+		}
+		console.log('Buddy MosConnection initialized')
+	}
+	if (!newConfig.buddy?.enable && mos.mosBuddyConnection) {
+		console.log('Stopping Buddy MosConnection')
+
+		// kill the buddy
+		await mos.mosBuddyConnection.dispose()
+		mos.mosBuddyConnection = undefined
+
+		// save config
+		if (newConfig.buddy) {
+			config.buddy = {
+				enable: newConfig.buddy.enable,
+				mosConnection: newConfig.buddy.mosConnection,
+				devices: newConfig.buddy.devices,
+			}
+		} else {
+			config.buddy = undefined
+		}
 	}
 
 	refreshFiles()
@@ -318,7 +470,7 @@ class MOSMonitor {
 	} = {}
 	private queueRunning = false
 
-	constructor(private mosDevice: MosDevice) {
+	constructor(private mosDevice: MosDevice, public enabled = true) {
 		setTimeout(() => this.triggerRandomUpdate(), 10000) // startup delay
 	}
 
@@ -334,12 +486,12 @@ class MOSMonitor {
 					const storyIds = ro.storyList.map((s) => s.id)
 					const storyId = storyIds[_.random(storyIds.length - 1)]
 					const story = ro.fullStories[storyId]
-					if (story) {
+					if (story && this.enabled) {
 						// send it
 						console.log('simulating edit')
 						this.commands.push(() => {
 							console.log('sendFullStory', story.ID)
-							return this.mosDevice.sendROStory(story)
+							return this._sendToMosDevice('sendROStory', story)
 						})
 						this.triggerCheckQueue()
 					}
@@ -360,7 +512,7 @@ class MOSMonitor {
 		if (this.ros[roId]) {
 			this.commands.push(() => {
 				console.log('sendDeleteRunningOrder')
-				return this.mosDevice.sendDeleteRunningOrder(getMosTypes(true).mosString128.create(roId))
+				return this._sendToMosDevice('sendDeleteRunningOrder', getMosTypes(true).mosString128.create(roId))
 			})
 		}
 		// At the end, store the updated RO:
@@ -374,7 +526,7 @@ class MOSMonitor {
 				Object.values(local.fullStories).forEach((story) => {
 					this.commands.push(() => {
 						console.log('sendFullStory', story.ID)
-						return this.mosDevice.sendROStory(story)
+						return this._sendToMosDevice('sendROStory', story)
 					})
 				})
 
@@ -396,7 +548,7 @@ class MOSMonitor {
 			// New RO
 			this.commands.push(() => {
 				console.log('sendCreateRunningOrder', ro.ID)
-				return this.mosDevice.sendCreateRunningOrder(ro)
+				return this._sendToMosDevice('sendCreateRunningOrder', ro)
 			})
 		} else {
 			const metadataEqual = _.isEqual(local.ro.MosExternalMetaData, ro.MosExternalMetaData)
@@ -411,7 +563,7 @@ class MOSMonitor {
 				// Only RO metadata has changed
 				this.commands.push(() => {
 					console.log('sendMetadataReplace', ro.ID)
-					return this.mosDevice.sendMetadataReplace(ro)
+					return this._sendToMosDevice('sendMetadataReplace', ro)
 				})
 			} else if (roBaseDataEqual && metadataEqual && !roStoriesEqual) {
 				// Only Stories has changed
@@ -422,7 +574,8 @@ class MOSMonitor {
 						const inserts = operation.inserts.map((i) => i.content)
 						this.commands.push(() => {
 							console.log('sendROInsertStories', ro.ID)
-							return this.mosDevice.sendROInsertStories(
+							return this._sendToMosDevice(
+								'sendROInsertStories',
 								{
 									RunningOrderID: ro.ID,
 									StoryID: getMosTypes(true).mosString128.create(operation.beforeId),
@@ -434,7 +587,8 @@ class MOSMonitor {
 						const updatedStory = operation.content
 						this.commands.push(() => {
 							console.log('sendROReplaceStories', ro.ID)
-							return this.mosDevice.sendROReplaceStories(
+							return this._sendToMosDevice(
+								'sendROReplaceStories',
 								{
 									RunningOrderID: ro.ID,
 									StoryID: getMosTypes(true).mosString128.create(operation.id),
@@ -446,7 +600,8 @@ class MOSMonitor {
 						const removeIds = operation.ids
 						console.log('sendRODeleteStories', ro.ID, removeIds)
 						this.commands.push(() => {
-							return this.mosDevice.sendRODeleteStories(
+							return this._sendToMosDevice(
+								'sendRODeleteStories',
 								{
 									RunningOrderID: ro.ID,
 								},
@@ -458,7 +613,8 @@ class MOSMonitor {
 						const moveIds = operation.ids
 						console.log('sendROMoveStories', ro.ID, moveIds, beforeId)
 						this.commands.push(() => {
-							return this.mosDevice.sendROMoveStories(
+							return this._sendToMosDevice(
+								'sendROMoveStories',
 								{
 									RunningOrderID: ro.ID,
 									StoryID: getMosTypes(true).mosString128.create(beforeId),
@@ -522,14 +678,14 @@ class MOSMonitor {
 				// last resort: replace the whole rundown
 				this.commands.push(() => {
 					console.log('sendReplaceRunningOrder')
-					return this.mosDevice.sendReplaceRunningOrder(ro)
+					return this._sendToMosDevice('sendReplaceRunningOrder', ro)
 				})
 			}
 		}
 		if (readyToAir !== local?.readyToAir) {
 			this.commands.push(() => {
 				console.log('sendReadyToAir', ro.ID, readyToAir)
-				return this.mosDevice.sendReadyToAir({
+				return this._sendToMosDevice('sendReadyToAir', {
 					ID: ro.ID,
 					Status: readyToAir ? IMOSObjectAirStatus.READY : IMOSObjectAirStatus.NOT_READY,
 				})
@@ -547,7 +703,7 @@ class MOSMonitor {
 			if (!local || !_.isEqual(localStory, story)) {
 				this.commands.push(() => {
 					console.log('sendFullStory', story.ID)
-					return this.mosDevice.sendROStory(story)
+					return this._sendToMosDevice('sendROStory', story)
 				})
 			}
 		})
@@ -604,6 +760,20 @@ class MOSMonitor {
 					})
 			}
 		}
+	}
+
+	// todo - tidy up the typings here
+	private _sendToMosDevice<
+		T extends keyof typeof MosDevice['prototype'],
+		M = MosDevice[T] extends (...arg0: any) => any ? MosDevice[T] : never
+		// @ts-ignore
+	>(method: T, ...params: Parameters<M>): ReturnType<M> | Promise<void> {
+		if (this.enabled) {
+			// @ts-ignore
+			return this.mosDevice[method](...params)
+		}
+
+		return Promise.resolve()
 	}
 }
 
