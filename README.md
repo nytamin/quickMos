@@ -1,3 +1,6 @@
+## :stop_sign::stop_sign: This tool has been relocated to be part of the [mos-connection](https://github.com/nrkno/sofie-mos-connection) project. :stop_sign::stop_sign:
+
+
 # Quick-MOS
 An application for quick simulation of a MOS server/NCS.
 
